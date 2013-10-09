@@ -102,7 +102,7 @@ suspended       = _suspended;
 
 
 // clear cache on launch for debugging
-#if 0
+#ifdef DEBUG
 + (void)initialize {
     [[self sharedFullyLoaded] clearCache];
 }
