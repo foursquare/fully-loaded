@@ -110,12 +110,12 @@ suspended       = _suspended;
 
 
 + (id)sharedFullyLoaded {
-    
     static FullyLoaded *shared = nil;
     
-    if (!shared) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
         shared = [self new];
-    }
+    });
     
     return shared;
 }
