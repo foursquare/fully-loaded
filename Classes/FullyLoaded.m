@@ -148,6 +148,8 @@ suspended       = _suspended;
                 object:nil];
         
         flQueue = dispatch_queue_create("flQueue", NULL);
+        
+        self.respectScreenScale = YES;
     }
     return self;
 }
@@ -230,7 +232,16 @@ suspended       = _suspended;
                                            // we write and then read back the image here.
                                            // this way all images behave consistently.
                                            // manually cached images are the exception; see note below.
-                                           r.image = [UIImage imageWithContentsOfFile:path];
+                                           
+                                           NSData *imageData = [NSData dataWithContentsOfFile:path];
+                                           float scale = [UIScreen mainScreen].scale;
+                                           if ((self.respectScreenScale) && (scale > 1.0)) {
+                                                r.image = [UIImage imageWithData:imageData scale:scale];
+                                           } else {
+                                               r.image = [UIImage imageWithData:imageData];
+                                           }
+                                           
+//                                           r.image = [UIImage imageWithContentsOfFile:path];
                                            
                                            if (!r.image) {
                                                // although the download completed, the image read failed
@@ -379,16 +390,24 @@ suspended       = _suspended;
     }
     
     dispatch_async(flQueue, ^{
+        UIImage *imageFromDisk = nil;
+        NSData *imageData = [NSData dataWithContentsOfFile:[self pathForURL:url]];
+        float scale = [UIScreen mainScreen].scale;
+        if ((self.respectScreenScale) && (scale > 1.0)) {
+            imageFromDisk = [UIImage imageWithData:imageData scale:scale];
+        } else {
+            imageFromDisk = [UIImage imageWithData:imageData];
+        }
         
-        UIImage *image = [UIImage imageWithContentsOfFile:[self pathForURL:url]];
+//        UIImage *image = [UIImage imageWithContentsOfFile:[self pathForURL:url]];
         
-        if (image) {
+        if (imageFromDisk) {
             FLLog(@"from disk:       %@", url);
-            [self.imageCache setObject:image forKey:url];
+            [self.imageCache setObject:imageFromDisk forKey:url];
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
-            completionBlock(image);
+            completionBlock(imageFromDisk);
         });
     });
 }
