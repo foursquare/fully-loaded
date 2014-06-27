@@ -105,7 +105,7 @@ suspended       = _suspended;
 
 
 // clear cache on launch for debugging
-#if 0
+#ifdef DEBUG
 + (void)initialize {
     [[self sharedFullyLoaded] clearCache];
 }
@@ -113,12 +113,12 @@ suspended       = _suspended;
 
 
 + (id)sharedFullyLoaded {
-    
     static FullyLoaded *shared = nil;
     
-    if (!shared) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
         shared = [self new];
-    }
+    });
     
     return shared;
 }
@@ -149,12 +149,14 @@ suspended       = _suspended;
         // it's file data, it will try to attempt to restore it from disk. However, if the image happens to have been
         // deleted, UIImage can't restore itself and UIImageView will end up showing a black image. To combat this
         // we delete the in-memory cache whenever the app is backgrounded.
-        [c addObserver:self
-              selector:@selector(clearMemoryCache)
-                  name:UIApplicationDidEnterBackgroundNotification
-                object:nil];
+        [c addObserver:self selector:@selector(clearMemoryCache) name:UIApplicationDidEnterBackgroundNotification object:nil];
+        
+            //clear memory cache in low-memory conditions
+        [c addObserver:self selector:@selector(clearMemoryCache) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
         
         flQueue = dispatch_queue_create("flQueue", NULL);
+        
+        self.respectScreenScale = YES;
     }
     return self;
 }
@@ -237,7 +239,16 @@ suspended       = _suspended;
                                            // we write and then read back the image here.
                                            // this way all images behave consistently.
                                            // manually cached images are the exception; see note below.
-                                           r.image = [UIImage imageWithContentsOfFile:path];
+                                           
+                                           NSData *imageData = [NSData dataWithContentsOfFile:path];
+                                           float scale = [UIScreen mainScreen].scale;
+                                           if ((self.respectScreenScale) && (scale > 1.0)) {
+                                                r.image = [UIImage imageWithData:imageData scale:scale];
+                                           } else {
+                                               r.image = [UIImage imageWithData:imageData];
+                                           }
+                                           
+//                                           r.image = [UIImage imageWithContentsOfFile:path];
                                            
                                            if (!r.image) {
                                                // although the download completed, the image read failed
@@ -416,16 +427,24 @@ suspended       = _suspended;
     
 #else
     dispatch_async(flQueue, ^{
+        UIImage *imageFromDisk = nil;
+        NSData *imageData = [NSData dataWithContentsOfFile:[self pathForURL:url]];
+        float scale = [UIScreen mainScreen].scale;
+        if ((self.respectScreenScale) && (scale > 1.0)) {
+            imageFromDisk = [UIImage imageWithData:imageData scale:scale];
+        } else {
+            imageFromDisk = [UIImage imageWithData:imageData];
+        }
         
-        UIImage *image = [UIImage imageWithContentsOfFile:[self pathForURL:url]];
+//        UIImage *image = [UIImage imageWithContentsOfFile:[self pathForURL:url]];
         
-        if (image) {
+        if (imageFromDisk) {
             FLLog(@"from disk:       %@", url);
-            [self.imageCache setObject:image forKey:url];
+            [self.imageCache setObject:imageFromDisk forKey:url];
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
-            completionBlock(image);
+            completionBlock(imageFromDisk);
         });
     });
 #endif
